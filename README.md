@@ -2,6 +2,8 @@
 
 A Streamlit web application that allows you to bulk-convert web pages into nicely formatted PDF documents. It uses Selenium to properly render JavaScript-heavy websites and automatically hides annoying cookie banners before generating the PDFs.
 
+Access the application here: https://pdfdownloader.streamlit.app/
+
 ## ✨ Features
 - **Bulk Processing**: Paste a list of URLs and let the app process them all at once.
 - **Custom File Names**: Define the exact output name for each PDF.
