@@ -36,7 +36,6 @@ def generate_bulk_pdfs(parsed_items):
     current_datetime = datetime.now().strftime("%d.%m.%Y %H.%M")
     zip_buffer = io.BytesIO()
     
-    # Flattened JS to prevent triple-quote copy-paste errors
     hide_cookies_js = (
         "const selectors = ['[id*=\"cookie\"]', '[class*=\"cookie\"]', '[id*=\"consent\"]', '[class*=\"consent\"]', "
         "'[id*=\"banner\"]', '[class*=\"banner\"]', '#onetrust-consent-sdk', '.osano-cm-window', '.trustarc-banner', '.optanon-alert-box-wrapper']; "
@@ -63,7 +62,6 @@ def generate_bulk_pdfs(parsed_items):
                         driver.get(root_url)
                         time.sleep(4)
                         
-                        # Flattened JS to prevent triple-quote copy-paste errors
                         fetch_js = (
                             "var pdf_url = arguments[0]; var done = arguments[1]; "
                             "fetch(pdf_url).then(response => { if (!response.ok) throw new Error('HTTP ' + response.status); return response.blob(); }) "
@@ -76,4 +74,58 @@ def generate_bulk_pdfs(parsed_items):
                         
                         if isinstance(result, str) and 'base64,' in result:
                             b64_data = result.split('base64,')[1]
-                            pdf_bytes = base64.b64decode(b64_data
+                            pdf_bytes = base64.b64decode(b64_data)
+                            
+                            if not pdf_bytes.startswith(b'%PDF'):
+                                raise Exception("Downloaded file is not a valid PDF.")
+                        else:
+                            raise Exception(f"Fetch failed: {result}")
+                            
+                    else:
+                        driver.get(url)
+                        time.sleep(5)  
+                        
+                        try:
+                            driver.execute_script(hide_cookies_js)
+                            time.sleep(1)
+                        except Exception:
+                            pass 
+                        
+                        print_options = PrintOptions()
+                        print_options.background = True
+                        
+                        pdf_base64 = driver.print_page(print_options)
+                        pdf_bytes = base64.b64decode(pdf_base64)
+                    
+                    zip_file.writestr(file_name, pdf_bytes)
+                
+                except Exception as e:
+                    error_msg = f"Failed to process {url}\nError: {str(e)}"
+                    zip_file.writestr(file_name.replace('.pdf', '_ERROR.txt'), error_msg)
+                
+    finally:
+        driver.quit()
+        
+    zip_buffer.seek(0)
+    return zip_buffer.getvalue()
+
+# --- 2. Streamlit User Interface ---
+st.set_page_config(page_title="Bulk Website to PDF", page_icon="🗂️")
+
+st.title("🗂️ Bulk Website to PDF Converter")
+
+input_mode = st.radio(
+    "Select Input Format", 
+    ["Markdown", "Plain Text (URL, Name)"], 
+    horizontal=True
+)
+
+if input_mode == "Markdown":
+    example_text = (
+        "1. [BT Taxe și comisioane (actualizate 01.04.2026)](https://www.bancatransilvania.ro/brosura-comisioane)\n"
+        "2. [BT PDF Comisioane persoane fizice](https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf)\n"
+        "3. [BT Abonamente cont curent](https://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent)"
+    )
+else:
+    example_text = (
+        "
