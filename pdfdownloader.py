@@ -4,13 +4,14 @@ import time
 import io
 import zipfile
 import re
+import pytz
 from urllib.parse import urlparse
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.print_page_options import PrintOptions
 
-def generate_bulk_pdfs(parsed_items):
+def generate_bulk_pdfs(parsed_items, tz_string):
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
@@ -29,7 +30,10 @@ def generate_bulk_pdfs(parsed_items):
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     driver.set_page_load_timeout(30)
     
-    current_datetime = datetime.now().strftime("%d.%m.%Y %H.%M")
+    # --- TIME ZONE LOGIC ---
+    local_tz = pytz.timezone(tz_string)
+    current_datetime = datetime.now(local_tz).strftime("%d.%m.%Y %H.%M")
+    
     zip_buffer = io.BytesIO()
     
     hide_cookies_js = "const selectors = ['[id*=\"cookie\"]', '[class*=\"cookie\"]', '[id*=\"consent\"]', '[class*=\"consent\"]', '[id*=\"banner\"]', '[class*=\"banner\"]', '#onetrust-consent-sdk', '.osano-cm-window', '.trustarc-banner', '.optanon-alert-box-wrapper']; document.querySelectorAll(selectors.join(',')).forEach(el => { el.style.display = 'none'; }); document.body.style.overflow = 'auto';"
@@ -96,10 +100,22 @@ def generate_bulk_pdfs(parsed_items):
 st.set_page_config(page_title="Bulk Website to PDF", page_icon="🗂️")
 st.title("🗂️ Bulk Website to PDF Converter")
 
-input_mode = st.radio("Select Input Format", ["Markdown", "Plain Text (URL, Name)"], horizontal=True)
+# --- UI FOR TIME ZONE SELECTION ---
+col1, col2 = st.columns(2)
+
+with col1:
+    input_mode = st.radio("Select Input Format", ["Markdown", "Plain Text (URL, Name)"])
+
+with col2:
+    tz_options = {
+        "Budapest (CET/CEST)": "Europe/Budapest",
+        "London (GMT/BST)": "Europe/London",
+        "Tallinn (EET/EEST)": "Europe/Tallinn"
+    }
+    selected_tz_label = st.radio("Select Time Zone for File Names", list(tz_options.keys()))
+    selected_tz_string = tz_options[selected_tz_label]
 
 example_md = "1. [BT Taxe și comisioane (actualizate 01.04.2026)](https://www.bancatransilvania.ro/brosura-comisioane)\n2. [BT PDF Comisioane persoane fizice](https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf)\n3. [BT Abonamente cont curent](https://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent)"
-
 example_plain = "https://www.bancatransilvania.ro/brosura-comisioane, BT Taxe și comisioane (actualizate 01.04.2026)\nhttps://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf, BT PDF Comisioane persoane fizice\nhttps://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent, BT Abonamente cont curent"
 
 if input_mode == "Markdown":
@@ -136,10 +152,12 @@ if st.button("Generate PDF Archive", type="primary"):
         if parsed_items:
             with st.spinner(f"Processing {len(parsed_items)} links... This might take a minute or two."):
                 try:
-                    zip_data = generate_bulk_pdfs(parsed_items)
+                    # Pass the timezone string into the generator function
+                    zip_data = generate_bulk_pdfs(parsed_items, selected_tz_string)
                     st.success("Done! All webpages have been converted to PDF.")
                     
-                    export_date = datetime.now().strftime('%Y-%m-%d_%H-%M')
+                    # Also use the correct timezone for the final ZIP file name
+                    export_date = datetime.now(pytz.timezone(selected_tz_string)).strftime('%Y-%m-%d_%H-%M')
                     export_filename = f"PDF_Export_{export_date}.zip"
                     
                     st.download_button(label="📦 Download ZIP with all PDFs", data=zip_data, file_name=export_filename, mime="application/zip")
