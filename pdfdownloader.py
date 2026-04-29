@@ -55,14 +55,14 @@ def generate_bulk_pdfs(parsed_items):
                 
                 parsed_url = urlparse(url)
                 
-                # --- NEW LOGIC: Stealth JavaScript Fetch for PDF files ---
+                # --- LOGIC: Stealth JavaScript Fetch for direct PDF files ---
                 if parsed_url.path.lower().endswith('.pdf'):
-                    # 1. Visit the website's root domain first to solve Cloudflare/WAF checks
+                    # Visit the website's root domain first to solve Cloudflare/WAF checks
                     root_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
                     driver.get(root_url)
-                    time.sleep(6) # Give the firewall time to verify our browser
+                    time.sleep(6)
                     
-                    # 2. Inject JS to download the PDF using the cleared session
+                    # Inject JS to download the PDF using the cleared session
                     fetch_js = """
                     var pdf_url = arguments[0];
                     var done = arguments[1];
@@ -83,9 +83,8 @@ def generate_bulk_pdfs(parsed_items):
                         b64_data = result.split('base64,')[1]
                         pdf_bytes = base64.b64decode(b64_data)
                         
-                        # Validate that it is actually a PDF (PDF files always start with %PDF)
                         if not pdf_bytes.startswith(b'%PDF'):
-                            raise Exception("The downloaded file is not a valid PDF. The bank's firewall might still be blocking access.")
+                            raise Exception("The downloaded file is not a valid PDF. The firewall might still be blocking access.")
                     else:
                         raise Exception(f"JavaScript Fetch failed: {result}")
                         
@@ -132,11 +131,11 @@ input_mode = st.radio(
 if input_mode == "Markdown":
     example_text = """1. [BT Taxe și comisioane (actualizate 01.04.2026)](https://www.bancatransilvania.ro/brosura-comisioane)
 2. [BT PDF Comisioane persoane fizice](https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf)
-* [N26 Mastercard](https://n26.com/en-eu/mastercard)"""
+3. [BT Abonamente cont curent](https://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent)"""
 else:
-    example_text = """https://www.bancatransilvania.ro/brosura-comisioane, BT Taxe și comisioane
+    example_text = """https://www.bancatransilvania.ro/brosura-comisioane, BT Taxe și comisioane (actualizate 01.04.2026)
 https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf, BT PDF Comisioane persoane fizice
-https://n26.com/en-eu/mastercard, N26 Mastercard"""
+https://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent, BT Abonamente cont curent"""
 
 user_input = st.text_area("Paste your links below:", value=example_text, height=200)
 
