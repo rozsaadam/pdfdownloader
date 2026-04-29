@@ -10,6 +10,7 @@ from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.print_page_options import PrintOptions
+from streamlit_javascript import st_javascript
 
 def generate_bulk_pdfs(parsed_items, tz_string):
     chrome_options = Options()
@@ -30,8 +31,12 @@ def generate_bulk_pdfs(parsed_items, tz_string):
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     driver.set_page_load_timeout(30)
     
-    # --- TIME ZONE LOGIC ---
-    local_tz = pytz.timezone(tz_string)
+    # --- AUTOMATIC TIME ZONE LOGIC ---
+    try:
+        local_tz = pytz.timezone(tz_string)
+    except Exception:
+        local_tz = pytz.UTC # Fallback to UTC if browser gives a weird timezone
+        
     current_datetime = datetime.now(local_tz).strftime("%d.%m.%Y %H.%M")
     
     zip_buffer = io.BytesIO()
@@ -100,22 +105,20 @@ def generate_bulk_pdfs(parsed_items, tz_string):
 st.set_page_config(page_title="Bulk Website to PDF", page_icon="🗂️")
 st.title("🗂️ Bulk Website to PDF Converter")
 
-# --- UI FOR TIME ZONE SELECTION ---
-col1, col2 = st.columns(2)
+# --- MAGIC: Get the user's timezone from their browser automatically ---
+client_timezone = st_javascript("Intl.DateTimeFormat().resolvedOptions().timeZone")
 
-with col1:
-    input_mode = st.radio("Select Input Format", ["Markdown", "Plain Text (URL, Name)"])
+# Streamlit-javascript sometimes returns 0 on the very first millisecond of loading. 
+# We default to UTC until the browser responds properly.
+if not client_timezone or client_timezone == 0:
+    client_timezone = "UTC"
 
-with col2:
-    tz_options = {
-        "Budapest (CET/CEST)": "Europe/Budapest",
-        "London (GMT/BST)": "Europe/London",
-        "Tallinn (EET/EEST)": "Europe/Tallinn"
-    }
-    selected_tz_label = st.radio("Select Time Zone for File Names", list(tz_options.keys()))
-    selected_tz_string = tz_options[selected_tz_label]
+st.caption(f"🌍 Auto-detected local timezone: **{client_timezone}**")
+
+input_mode = st.radio("Select Input Format", ["Markdown", "Plain Text (URL, Name)"], horizontal=True)
 
 example_md = "1. [BT Taxe și comisioane (actualizate 01.04.2026)](https://www.bancatransilvania.ro/brosura-comisioane)\n2. [BT PDF Comisioane persoane fizice](https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf)\n3. [BT Abonamente cont curent](https://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent)"
+
 example_plain = "https://www.bancatransilvania.ro/brosura-comisioane, BT Taxe și comisioane (actualizate 01.04.2026)\nhttps://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf, BT PDF Comisioane persoane fizice\nhttps://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent, BT Abonamente cont curent"
 
 if input_mode == "Markdown":
@@ -152,12 +155,17 @@ if st.button("Generate PDF Archive", type="primary"):
         if parsed_items:
             with st.spinner(f"Processing {len(parsed_items)} links... This might take a minute or two."):
                 try:
-                    # Pass the timezone string into the generator function
-                    zip_data = generate_bulk_pdfs(parsed_items, selected_tz_string)
+                    # Pass the automatically detected timezone into the function
+                    zip_data = generate_bulk_pdfs(parsed_items, client_timezone)
                     st.success("Done! All webpages have been converted to PDF.")
                     
-                    # Also use the correct timezone for the final ZIP file name
-                    export_date = datetime.now(pytz.timezone(selected_tz_string)).strftime('%Y-%m-%d_%H-%M')
+                    # Also use the auto-timezone for the final ZIP file name
+                    try:
+                        final_tz = pytz.timezone(client_timezone)
+                    except Exception:
+                        final_tz = pytz.UTC
+                        
+                    export_date = datetime.now(final_tz).strftime('%Y-%m-%d_%H-%M')
                     export_filename = f"PDF_Export_{export_date}.zip"
                     
                     st.download_button(label="📦 Download ZIP with all PDFs", data=zip_data, file_name=export_filename, mime="application/zip")
