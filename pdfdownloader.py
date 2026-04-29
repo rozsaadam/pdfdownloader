@@ -17,6 +17,12 @@ def generate_bulk_pdfs(parsed_items):
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     
+    # --- CRASH PREVENTION SETTINGS ---
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-software-rasterizer")
+    # 'eager' means Selenium won't wait for slow tracking scripts to finish loading
+    chrome_options.page_load_strategy = 'eager' 
+    
     # --- STEALTH SETTINGS ---
     user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
     chrome_options.add_argument(f"user-agent={user_agent}")
@@ -26,6 +32,9 @@ def generate_bulk_pdfs(parsed_items):
     
     driver = webdriver.Chrome(options=chrome_options)
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    
+    # Don't let a single broken page hang the entire app
+    driver.set_page_load_timeout(30)
     
     current_datetime = datetime.now().strftime("%d.%m.%Y %H.%M")
     zip_buffer = io.BytesIO()
@@ -55,135 +64,28 @@ def generate_bulk_pdfs(parsed_items):
                 
                 parsed_url = urlparse(url)
                 
-                # --- LOGIC: Stealth JavaScript Fetch for direct PDF files ---
-                if parsed_url.path.lower().endswith('.pdf'):
-                    # Visit the website's root domain first to solve Cloudflare/WAF checks
-                    root_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
-                    driver.get(root_url)
-                    time.sleep(6)
-                    
-                    # Inject JS to download the PDF using the cleared session
-                    fetch_js = """
-                    var pdf_url = arguments[0];
-                    var done = arguments[1];
-                    fetch(pdf_url)
-                        .then(response => response.blob())
-                        .then(blob => {
-                            var reader = new FileReader();
-                            reader.onloadend = function() { done(reader.result); }
-                            reader.readAsDataURL(blob);
-                        })
-                        .catch(err => done('ERROR: ' + err.message));
-                    """
-                    
-                    driver.set_script_timeout(30)
-                    result = driver.execute_async_script(fetch_js, url)
-                    
-                    if isinstance(result, str) and 'base64,' in result:
-                        b64_data = result.split('base64,')[1]
-                        pdf_bytes = base64.b64decode(b64_data)
-                        
-                        if not pdf_bytes.startswith(b'%PDF'):
-                            raise Exception("The downloaded file is not a valid PDF. The firewall might still be blocking access.")
-                    else:
-                        raise Exception(f"JavaScript Fetch failed: {result}")
-                        
-                # --- STANDARD LOGIC: Render webpages to PDF ---
-                else:
-                    driver.get(url)
-                    time.sleep(6)  
-                    
-                    try:
-                        driver.execute_script(hide_cookies_js)
-                        time.sleep(1)
-                    except Exception:
-                        pass 
-                    
-                    print_options = PrintOptions()
-                    print_options.background = True
-                    
-                    pdf_base64 = driver.print_page(print_options)
-                    pdf_bytes = base64.b64decode(pdf_base64)
-                
                 # Sanitize name to prevent file path errors inside the ZIP
                 clean_name = re.sub(r'[\\/*?:"<>|]', "", name) if name else "Website"
                 file_name = f"{index} {current_datetime} - {clean_name}.pdf"
                 
-                zip_file.writestr(file_name, pdf_bytes)
-                
-    finally:
-        driver.quit()
-        
-    zip_buffer.seek(0)
-    return zip_buffer.getvalue()
-
-# --- 2. Streamlit User Interface ---
-st.set_page_config(page_title="Bulk Website to PDF", page_icon="🗂️")
-
-st.title("🗂️ Bulk Website to PDF Converter")
-
-input_mode = st.radio(
-    "Select Input Format", 
-    ["Markdown", "Plain Text (URL, Name)"], 
-    horizontal=True
-)
-
-if input_mode == "Markdown":
-    example_text = """1. [BT Taxe și comisioane (actualizate 01.04.2026)](https://www.bancatransilvania.ro/brosura-comisioane)
-2. [BT PDF Comisioane persoane fizice](https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf)
-3. [BT Abonamente cont curent](https://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent)"""
-else:
-    example_text = """https://www.bancatransilvania.ro/brosura-comisioane, BT Taxe și comisioane (actualizate 01.04.2026)
-https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf, BT PDF Comisioane persoane fizice
-https://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent, BT Abonamente cont curent"""
-
-user_input = st.text_area("Paste your links below:", value=example_text, height=200)
-
-if st.button("Generate PDF Archive", type="primary"):
-    if user_input.strip():
-        lines = user_input.strip().split('\n')
-        parsed_items = []
-        md_pattern = re.compile(r"\[(.*?)\]\((.*?)\)")
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            if input_mode == "Markdown":
-                md_match = md_pattern.search(line)
-                if md_match:
-                    name = md_match.group(1).strip()
-                    url = md_match.group(2).strip()
-                    parsed_items.append((url, name))
-                else:
-                    parsed_items.append((line, "Unknown Name"))
-                    
-            elif input_mode == "Plain Text (URL, Name)":
-                if "," in line:
-                    url, name = line.split(",", 1)
-                    parsed_items.append((url.strip(), name.strip()))
-                else:
-                    parsed_items.append((line, "Unknown Name"))
-        
-        if parsed_items:
-            with st.spinner(f"Processing {len(parsed_items)} links... This might take a minute or two."):
                 try:
-                    zip_data = generate_bulk_pdfs(parsed_items)
-                    st.success("Done! All webpages have been converted to PDF.")
-                    
-                    export_date = datetime.now().strftime('%Y-%m-%d_%H-%M')
-                    export_filename = f"PDF_Export_{export_date}.zip"
-                    
-                    st.download_button(
-                        label="📦 Download ZIP with all PDFs",
-                        data=zip_data,
-                        file_name=export_filename,
-                        mime="application/zip"
-                    )
-                except Exception as e:
-                    st.error(f"An error occurred during conversion: {e}")
-        else:
-            st.warning("No valid links found.")
-    else:
-        st.warning("Please enter at least one link.")
+                    # --- LOGIC: Stealth JavaScript Fetch for direct PDF files ---
+                    if parsed_url.path.lower().endswith('.pdf'):
+                        root_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
+                        driver.get(root_url)
+                        time.sleep(4)
+                        
+                        fetch_js = """
+                        var pdf_url = arguments[0];
+                        var done = arguments[1];
+                        fetch(pdf_url)
+                            .then(response => {
+                                if (!response.ok) throw new Error("HTTP " + response.status);
+                                return response.blob();
+                            })
+                            .then(blob => {
+                                var reader = new FileReader();
+                                reader.onloadend = function() { done(reader.result); }
+                                reader.readAsDataURL(blob);
+                            })
+                            .catch(err => done('ERROR: ' + err.
