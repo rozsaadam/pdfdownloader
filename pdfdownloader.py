@@ -117,9 +117,9 @@ st.caption(f"🌍 Auto-detected local timezone to create timestamp in PDF file n
 
 input_mode = st.radio("Select Input Format", ["Markdown", "Plain Text (URL, Name)"], horizontal=True)
 
-example_md = "1. [BT Taxe și comisioane (actualizate 01.04.2026)](https://www.bancatransilvania.ro/brosura-comisioane)\n2. [BT PDF Comisioane persoane fizice](https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf)\n3. [BT Abonamente cont curent](https://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent)"
+example_md = "1. [BT Taxe și comisioane](https://www.bancatransilvania.ro/brosura-comisioane)\n2. [BT PDF Comisioane persoane fizice](https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf)\n3. [BT Abonamente cont curent](https://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent)"
 
-example_plain = "https://www.bancatransilvania.ro/brosura-comisioane, BT Taxe și comisioane (actualizate 01.04.2026)\nhttps://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf, BT PDF Comisioane persoane fizice\nhttps://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent, BT Abonamente cont curent"
+example_plain = "https://www.bancatransilvania.ro/brosura-comisioane, BT Taxe și comisioane\nhttps://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf, BT PDF Comisioane persoane fizice\nhttps://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent, BT Abonamente cont curent"
 
 if input_mode == "Markdown":
     user_input = st.text_area("Paste your links below:", value=example_md, height=200)
