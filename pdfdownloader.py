@@ -4,6 +4,8 @@ import time
 import io
 import zipfile
 import re
+import requests
+from urllib.parse import urlparse
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -17,26 +19,24 @@ def generate_bulk_pdfs(parsed_items):
     chrome_options.add_argument("--disable-dev-shm-usage")
     
     # --- STEALTH SETTINGS ---
-    # 1. Spoof a real Windows 11 / Chrome User-Agent so we don't look like "HeadlessChrome"
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
-    
-    # 2. Disable the "navigator.webdriver" flag that websites use to detect bots
+    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    chrome_options.add_argument(f"user-agent={user_agent}")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    
-    # 3. Remove the "Chrome is being controlled by automated test software" infobar/flags
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
-    driver = webdriver.Chrome(options=chrome_options)
+    # Force Chrome to NOT open PDFs internally (just in case a weird link slips through)
+    chrome_options.add_experimental_option('prefs', {
+        "plugins.always_open_pdf_externally": True
+    })
     
-    # 4. Final stealth step: Execute a script immediately to wipe the webdriver variable from the browser
+    driver = webdriver.Chrome(options=chrome_options)
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
     # Timestamp format: dd.mm.yyyy hh.mm
     current_datetime = datetime.now().strftime("%d.%m.%Y %H.%M")
     zip_buffer = io.BytesIO()
     
-    # JavaScript to hide common cookie banners, consent dialogs, and overlays
     hide_cookies_js = """
     const selectors = [
         '[id*="cookie"]', '[class*="cookie"]',
@@ -60,25 +60,36 @@ def generate_bulk_pdfs(parsed_items):
                 if not url.startswith("http://") and not url.startswith("https://"):
                     url = "https://" + url
                 
-                driver.get(url)
+                # --- NEW LOGIC: Check if the URL is a direct PDF file ---
+                parsed_url = urlparse(url)
+                if parsed_url.path.lower().endswith('.pdf'):
+                    # It's an actual PDF file! Download it directly using requests.
+                    try:
+                        headers = {'User-Agent': user_agent}
+                        response = requests.get(url, headers=headers, timeout=15)
+                        response.raise_for_status() # Raise error if download fails
+                        pdf_bytes = response.content
+                    except Exception as e:
+                        raise Exception(f"Failed to directly download PDF from {url}: {e}")
                 
-                # Wait 6 seconds to allow anti-bot JS challenges and heavy assets to load
-                time.sleep(6)  
+                else:
+                    # It's a normal webpage. Use Selenium to render and print it.
+                    driver.get(url)
+                    time.sleep(6)  
+                    
+                    try:
+                        driver.execute_script(hide_cookies_js)
+                        time.sleep(1)
+                    except Exception:
+                        pass 
+                    
+                    print_options = PrintOptions()
+                    print_options.background = True
+                    
+                    pdf_base64 = driver.print_page(print_options)
+                    pdf_bytes = base64.b64decode(pdf_base64)
                 
-                # Execute the JS to wipe away cookie popups
-                try:
-                    driver.execute_script(hide_cookies_js)
-                    time.sleep(1)
-                except Exception:
-                    pass 
-                
-                print_options = PrintOptions()
-                print_options.background = True
-                
-                pdf_base64 = driver.print_page(print_options)
-                pdf_bytes = base64.b64decode(pdf_base64)
-                
-                # Sanitize name to prevent file path errors
+                # Sanitize name to prevent file path errors inside the ZIP
                 clean_name = re.sub(r'[\\/*?:"<>|]', "", name) if name else "Website"
                 file_name = f"{index} {current_datetime} - {clean_name}.pdf"
                 
@@ -94,14 +105,12 @@ st.set_page_config(page_title="Bulk Website to PDF", page_icon="🗂️")
 
 st.title("🗂️ Bulk Website to PDF Converter")
 
-# Input Mode Toggle
 input_mode = st.radio(
     "Select Input Format", 
     ["Markdown", "Plain Text (URL, Name)"], 
     horizontal=True
 )
 
-# Dynamically change the example text based on the selected mode
 if input_mode == "Markdown":
     example_text = """1. [BT Taxe și comisioane (actualizate 01.04.2026)](https://www.bancatransilvania.ro/brosura-comisioane)
 2. [BT PDF Comisioane persoane fizice](https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf)
