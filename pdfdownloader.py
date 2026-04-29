@@ -16,7 +16,21 @@ def generate_bulk_pdfs(parsed_items):
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     
+    # --- STEALTH SETTINGS ---
+    # 1. Spoof a real Windows 11 / Chrome User-Agent so we don't look like "HeadlessChrome"
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+    
+    # 2. Disable the "navigator.webdriver" flag that websites use to detect bots
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    
+    # 3. Remove the "Chrome is being controlled by automated test software" infobar/flags
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+    
     driver = webdriver.Chrome(options=chrome_options)
+    
+    # 4. Final stealth step: Execute a script immediately to wipe the webdriver variable from the browser
+    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
     # Timestamp format: dd.mm.yyyy hh.mm
     current_datetime = datetime.now().strftime("%d.%m.%Y %H.%M")
@@ -47,7 +61,9 @@ def generate_bulk_pdfs(parsed_items):
                     url = "https://" + url
                 
                 driver.get(url)
-                time.sleep(4)  # Wait for page layout and images to load
+                
+                # Wait 6 seconds to allow anti-bot JS challenges and heavy assets to load
+                time.sleep(6)  
                 
                 # Execute the JS to wipe away cookie popups
                 try:
@@ -115,7 +131,6 @@ if st.button("Generate PDF Archive", type="primary"):
                     url = md_match.group(2).strip()
                     parsed_items.append((url, name))
                 else:
-                    # If it fails to find markdown, just take the raw line as the URL
                     parsed_items.append((line, "Unknown Name"))
                     
             elif input_mode == "Plain Text (URL, Name)":
