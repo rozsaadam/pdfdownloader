@@ -113,7 +113,7 @@ client_timezone = st_javascript("Intl.DateTimeFormat().resolvedOptions().timeZon
 if not client_timezone or client_timezone == 0:
     client_timezone = "UTC"
 
-st.caption(f"🌍 Auto-detected local timezone: **{client_timezone}**")
+st.caption(f"🌍 Auto-detected local timezone to create timestamp: **{client_timezone}**")
 
 input_mode = st.radio("Select Input Format", ["Markdown", "Plain Text (URL, Name)"], horizontal=True)
 
