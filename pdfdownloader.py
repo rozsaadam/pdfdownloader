@@ -20,7 +20,6 @@ def generate_bulk_pdfs(parsed_items):
     # --- CRASH PREVENTION SETTINGS ---
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--disable-software-rasterizer")
-    # 'eager' means Selenium won't wait for slow tracking scripts to finish loading
     chrome_options.page_load_strategy = 'eager' 
     
     # --- STEALTH SETTINGS ---
@@ -32,26 +31,18 @@ def generate_bulk_pdfs(parsed_items):
     
     driver = webdriver.Chrome(options=chrome_options)
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    
-    # Don't let a single broken page hang the entire app
     driver.set_page_load_timeout(30)
     
     current_datetime = datetime.now().strftime("%d.%m.%Y %H.%M")
     zip_buffer = io.BytesIO()
     
-    hide_cookies_js = """
-    const selectors = [
-        '[id*="cookie"]', '[class*="cookie"]',
-        '[id*="consent"]', '[class*="consent"]',
-        '[id*="banner"]', '[class*="banner"]',
-        '#onetrust-consent-sdk', '.osano-cm-window',
-        '.trustarc-banner', '.optanon-alert-box-wrapper'
-    ];
-    document.querySelectorAll(selectors.join(',')).forEach(el => {
-        el.style.display = 'none';
-    });
-    document.body.style.overflow = 'auto';
-    """
+    # Flattened JS to prevent triple-quote copy-paste errors
+    hide_cookies_js = (
+        "const selectors = ['[id*=\"cookie\"]', '[class*=\"cookie\"]', '[id*=\"consent\"]', '[class*=\"consent\"]', "
+        "'[id*=\"banner\"]', '[class*=\"banner\"]', '#onetrust-consent-sdk', '.osano-cm-window', '.trustarc-banner', '.optanon-alert-box-wrapper']; "
+        "document.querySelectorAll(selectors.join(',')).forEach(el => { el.style.display = 'none'; }); "
+        "document.body.style.overflow = 'auto';"
+    )
     
     try:
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
@@ -63,29 +54,26 @@ def generate_bulk_pdfs(parsed_items):
                     url = "https://" + url
                 
                 parsed_url = urlparse(url)
-                
-                # Sanitize name to prevent file path errors inside the ZIP
                 clean_name = re.sub(r'[\\/*?:"<>|]', "", name) if name else "Website"
                 file_name = f"{index} {current_datetime} - {clean_name}.pdf"
                 
                 try:
-                    # --- LOGIC: Stealth JavaScript Fetch for direct PDF files ---
                     if parsed_url.path.lower().endswith('.pdf'):
                         root_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
                         driver.get(root_url)
                         time.sleep(4)
                         
-                        fetch_js = """
-                        var pdf_url = arguments[0];
-                        var done = arguments[1];
-                        fetch(pdf_url)
-                            .then(response => {
-                                if (!response.ok) throw new Error("HTTP " + response.status);
-                                return response.blob();
-                            })
-                            .then(blob => {
-                                var reader = new FileReader();
-                                reader.onloadend = function() { done(reader.result); }
-                                reader.readAsDataURL(blob);
-                            })
-                            .catch(err => done('ERROR: ' + err.
+                        # Flattened JS to prevent triple-quote copy-paste errors
+                        fetch_js = (
+                            "var pdf_url = arguments[0]; var done = arguments[1]; "
+                            "fetch(pdf_url).then(response => { if (!response.ok) throw new Error('HTTP ' + response.status); return response.blob(); }) "
+                            ".then(blob => { var reader = new FileReader(); reader.onloadend = function() { done(reader.result); }; reader.readAsDataURL(blob); }) "
+                            ".catch(err => done('ERROR: ' + err.message));"
+                        )
+                        
+                        driver.set_script_timeout(30)
+                        result = driver.execute_async_script(fetch_js, url)
+                        
+                        if isinstance(result, str) and 'base64,' in result:
+                            b64_data = result.split('base64,')[1]
+                            pdf_bytes = base64.b64decode(b64_data
