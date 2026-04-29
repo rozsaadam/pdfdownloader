@@ -4,7 +4,9 @@ import time
 import io
 import zipfile
 import re
-import requests
+import os
+import tempfile
+import shutil
 from urllib.parse import urlparse
 from datetime import datetime
 from selenium import webdriver
@@ -13,6 +15,9 @@ from selenium.webdriver.common.print_page_options import PrintOptions
 
 # --- 1. Core Logic for PDF Generation ---
 def generate_bulk_pdfs(parsed_items):
+    # Create a temporary directory for Selenium to download actual PDF files into
+    temp_download_dir = tempfile.mkdtemp()
+    
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
@@ -25,15 +30,19 @@ def generate_bulk_pdfs(parsed_items):
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
-    # Force Chrome to NOT open PDFs internally (just in case a weird link slips through)
-    chrome_options.add_experimental_option('prefs', {
-        "plugins.always_open_pdf_externally": True
-    })
+    # Force Chrome to download PDFs to our temp folder instead of opening them
+    prefs = {
+        "download.default_directory": temp_download_dir,
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+        "plugins.always_open_pdf_externally": True,
+        "profile.default_content_settings.popups": 0,
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
     
     driver = webdriver.Chrome(options=chrome_options)
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
-    # Timestamp format: dd.mm.yyyy hh.mm
     current_datetime = datetime.now().strftime("%d.%m.%Y %H.%M")
     zip_buffer = io.BytesIO()
     
@@ -60,20 +69,37 @@ def generate_bulk_pdfs(parsed_items):
                 if not url.startswith("http://") and not url.startswith("https://"):
                     url = "https://" + url
                 
-                # --- NEW LOGIC: Check if the URL is a direct PDF file ---
                 parsed_url = urlparse(url)
-                if parsed_url.path.lower().endswith('.pdf'):
-                    # It's an actual PDF file! Download it directly using requests.
-                    try:
-                        headers = {'User-Agent': user_agent}
-                        response = requests.get(url, headers=headers, timeout=15)
-                        response.raise_for_status() # Raise error if download fails
-                        pdf_bytes = response.content
-                    except Exception as e:
-                        raise Exception(f"Failed to directly download PDF from {url}: {e}")
                 
+                # --- NEW LOGIC: Use Selenium to securely download direct PDFs ---
+                if parsed_url.path.lower().endswith('.pdf'):
+                    # Empty the temp folder before starting so we don't grab old files
+                    for filename in os.listdir(temp_download_dir):
+                        file_path = os.path.join(temp_download_dir, filename)
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+                            
+                    driver.get(url)
+                    
+                    # Wait for Chrome to finish downloading the file (max 15 seconds)
+                    pdf_bytes = None
+                    for _ in range(15):
+                        files = os.listdir(temp_download_dir)
+                        # Chrome uses .crdownload extension while a file is still downloading
+                        valid_files = [f for f in files if not f.endswith('.crdownload')]
+                        
+                        if valid_files:
+                            downloaded_file_path = os.path.join(temp_download_dir, valid_files[0])
+                            with open(downloaded_file_path, 'rb') as f:
+                                pdf_bytes = f.read()
+                            break
+                        time.sleep(1)
+                        
+                    if not pdf_bytes:
+                        raise Exception(f"Failed to securely download PDF from {url}. The request timed out or was blocked.")
+                        
+                # --- STANDARD LOGIC: Render standard webpages to PDF ---
                 else:
-                    # It's a normal webpage. Use Selenium to render and print it.
                     driver.get(url)
                     time.sleep(6)  
                     
@@ -94,8 +120,11 @@ def generate_bulk_pdfs(parsed_items):
                 file_name = f"{index} {current_datetime} - {clean_name}.pdf"
                 
                 zip_file.writestr(file_name, pdf_bytes)
+                
     finally:
         driver.quit()
+        # Clean up the temporary download folder from your hard drive
+        shutil.rmtree(temp_download_dir, ignore_errors=True)
         
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
@@ -128,45 +157,4 @@ if st.button("Generate PDF Archive", type="primary"):
         parsed_items = []
         md_pattern = re.compile(r"\[(.*?)\]\((.*?)\)")
         
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            if input_mode == "Markdown":
-                md_match = md_pattern.search(line)
-                if md_match:
-                    name = md_match.group(1).strip()
-                    url = md_match.group(2).strip()
-                    parsed_items.append((url, name))
-                else:
-                    parsed_items.append((line, "Unknown Name"))
-                    
-            elif input_mode == "Plain Text (URL, Name)":
-                if "," in line:
-                    url, name = line.split(",", 1)
-                    parsed_items.append((url.strip(), name.strip()))
-                else:
-                    parsed_items.append((line, "Unknown Name"))
-        
-        if parsed_items:
-            with st.spinner(f"Processing {len(parsed_items)} links... This might take a minute or two."):
-                try:
-                    zip_data = generate_bulk_pdfs(parsed_items)
-                    st.success("Done! All webpages have been converted to PDF.")
-                    
-                    export_date = datetime.now().strftime('%Y-%m-%d_%H-%M')
-                    export_filename = f"PDF_Export_{export_date}.zip"
-                    
-                    st.download_button(
-                        label="📦 Download ZIP with all PDFs",
-                        data=zip_data,
-                        file_name=export_filename,
-                        mime="application/zip"
-                    )
-                except Exception as e:
-                    st.error(f"An error occurred during conversion: {e}")
-        else:
-            st.warning("No valid links found.")
-    else:
-        st.warning("Please enter at least one link.")
+        for line in
