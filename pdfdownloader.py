@@ -157,4 +157,45 @@ if st.button("Generate PDF Archive", type="primary"):
         parsed_items = []
         md_pattern = re.compile(r"\[(.*?)\]\((.*?)\)")
         
-        for line in
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            if input_mode == "Markdown":
+                md_match = md_pattern.search(line)
+                if md_match:
+                    name = md_match.group(1).strip()
+                    url = md_match.group(2).strip()
+                    parsed_items.append((url, name))
+                else:
+                    parsed_items.append((line, "Unknown Name"))
+                    
+            elif input_mode == "Plain Text (URL, Name)":
+                if "," in line:
+                    url, name = line.split(",", 1)
+                    parsed_items.append((url.strip(), name.strip()))
+                else:
+                    parsed_items.append((line, "Unknown Name"))
+        
+        if parsed_items:
+            with st.spinner(f"Processing {len(parsed_items)} links... This might take a minute or two."):
+                try:
+                    zip_data = generate_bulk_pdfs(parsed_items)
+                    st.success("Done! All webpages have been converted to PDF.")
+                    
+                    export_date = datetime.now().strftime('%Y-%m-%d_%H-%M')
+                    export_filename = f"PDF_Export_{export_date}.zip"
+                    
+                    st.download_button(
+                        label="📦 Download ZIP with all PDFs",
+                        data=zip_data,
+                        file_name=export_filename,
+                        mime="application/zip"
+                    )
+                except Exception as e:
+                    st.error(f"An error occurred during conversion: {e}")
+        else:
+            st.warning("No valid links found.")
+    else:
+        st.warning("Please enter at least one link.")
