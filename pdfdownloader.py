@@ -4,9 +4,6 @@ import time
 import io
 import zipfile
 import re
-import os
-import tempfile
-import shutil
 from urllib.parse import urlparse
 from datetime import datetime
 from selenium import webdriver
@@ -15,9 +12,6 @@ from selenium.webdriver.common.print_page_options import PrintOptions
 
 # --- 1. Core Logic for PDF Generation ---
 def generate_bulk_pdfs(parsed_items):
-    # Create a temporary directory for Selenium to download actual PDF files into
-    temp_download_dir = tempfile.mkdtemp()
-    
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
@@ -29,16 +23,6 @@ def generate_bulk_pdfs(parsed_items):
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
-    
-    # Force Chrome to download PDFs to our temp folder instead of opening them
-    prefs = {
-        "download.default_directory": temp_download_dir,
-        "download.prompt_for_download": False,
-        "download.directory_upgrade": True,
-        "plugins.always_open_pdf_externally": True,
-        "profile.default_content_settings.popups": 0,
-    }
-    chrome_options.add_experimental_option("prefs", prefs)
     
     driver = webdriver.Chrome(options=chrome_options)
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
@@ -71,34 +55,41 @@ def generate_bulk_pdfs(parsed_items):
                 
                 parsed_url = urlparse(url)
                 
-                # --- NEW LOGIC: Use Selenium to securely download direct PDFs ---
+                # --- NEW LOGIC: Stealth JavaScript Fetch for PDF files ---
                 if parsed_url.path.lower().endswith('.pdf'):
-                    # Empty the temp folder before starting so we don't grab old files
-                    for filename in os.listdir(temp_download_dir):
-                        file_path = os.path.join(temp_download_dir, filename)
-                        if os.path.isfile(file_path):
-                            os.remove(file_path)
-                            
-                    driver.get(url)
+                    # 1. Visit the website's root domain first to solve Cloudflare/WAF checks
+                    root_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
+                    driver.get(root_url)
+                    time.sleep(6) # Give the firewall time to verify our browser
                     
-                    # Wait for Chrome to finish downloading the file (max 15 seconds)
-                    pdf_bytes = None
-                    for _ in range(15):
-                        files = os.listdir(temp_download_dir)
-                        # Chrome uses .crdownload extension while a file is still downloading
-                        valid_files = [f for f in files if not f.endswith('.crdownload')]
+                    # 2. Inject JS to download the PDF using the cleared session
+                    fetch_js = """
+                    var pdf_url = arguments[0];
+                    var done = arguments[1];
+                    fetch(pdf_url)
+                        .then(response => response.blob())
+                        .then(blob => {
+                            var reader = new FileReader();
+                            reader.onloadend = function() { done(reader.result); }
+                            reader.readAsDataURL(blob);
+                        })
+                        .catch(err => done('ERROR: ' + err.message));
+                    """
+                    
+                    driver.set_script_timeout(30)
+                    result = driver.execute_async_script(fetch_js, url)
+                    
+                    if isinstance(result, str) and 'base64,' in result:
+                        b64_data = result.split('base64,')[1]
+                        pdf_bytes = base64.b64decode(b64_data)
                         
-                        if valid_files:
-                            downloaded_file_path = os.path.join(temp_download_dir, valid_files[0])
-                            with open(downloaded_file_path, 'rb') as f:
-                                pdf_bytes = f.read()
-                            break
-                        time.sleep(1)
+                        # Validate that it is actually a PDF (PDF files always start with %PDF)
+                        if not pdf_bytes.startswith(b'%PDF'):
+                            raise Exception("The downloaded file is not a valid PDF. The bank's firewall might still be blocking access.")
+                    else:
+                        raise Exception(f"JavaScript Fetch failed: {result}")
                         
-                    if not pdf_bytes:
-                        raise Exception(f"Failed to securely download PDF from {url}. The request timed out or was blocked.")
-                        
-                # --- STANDARD LOGIC: Render standard webpages to PDF ---
+                # --- STANDARD LOGIC: Render webpages to PDF ---
                 else:
                     driver.get(url)
                     time.sleep(6)  
@@ -123,8 +114,6 @@ def generate_bulk_pdfs(parsed_items):
                 
     finally:
         driver.quit()
-        # Clean up the temporary download folder from your hard drive
-        shutil.rmtree(temp_download_dir, ignore_errors=True)
         
     zip_buffer.seek(0)
     return zip_buffer.getvalue()
