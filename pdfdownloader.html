@@ -1,0 +1,963 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bulk Website to PDF Converter</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #20242a;
+      --muted: #69707a;
+      --border: #d9dee7;
+      --soft-border: #e7ebf1;
+      --primary: #ff4b4b;
+      --primary-strong: #e23d3d;
+      --blue: #2563eb;
+      --green: #16803c;
+      --yellow: #8a5a00;
+      --red: #bc2f2f;
+      --row: #fafbfc;
+      --focus: #2563eb;
+      color-scheme: light;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    .page {
+      width: min(960px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 40px 0;
+    }
+
+    .app {
+      background: var(--panel);
+      border: 1px solid var(--soft-border);
+      border-radius: 8px;
+      box-shadow: 0 18px 40px rgba(23, 31, 43, 0.08);
+      padding: 32px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 32px;
+      line-height: 1.2;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .caption {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .quota-note {
+      margin-top: 22px;
+      padding: 12px 14px;
+      border: 1px solid #f1d7a4;
+      border-radius: 8px;
+      color: #5f4300;
+      background: #fff8e8;
+      font-size: 14px;
+    }
+
+    .section {
+      margin-top: 24px;
+    }
+
+    .label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .segmented {
+      display: inline-grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #f2f4f7;
+    }
+
+    .segmented input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .segmented span {
+      display: block;
+      min-width: 150px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 14px;
+      font-weight: 650;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .segmented input:checked + span {
+      background: #ffffff;
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(26, 33, 44, 0.12);
+    }
+
+    .segmented input:focus-visible + span,
+    textarea:focus-visible,
+    button:focus-visible,
+    a:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 230px;
+      resize: vertical;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      background: #ffffff;
+      font: 14px/1.5 ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    button,
+    .download-link {
+      display: inline-flex;
+      min-height: 42px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      padding: 0 16px;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .primary {
+      color: #ffffff;
+      background: var(--primary);
+    }
+
+    .primary:hover:not(:disabled) {
+      background: var(--primary-strong);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.62;
+    }
+
+    .secondary {
+      color: var(--text);
+      border-color: var(--border);
+      background: #ffffff;
+    }
+
+    .download-link {
+      color: #ffffff;
+      background: var(--blue);
+    }
+
+    .status-text {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .notice {
+      margin-top: 16px;
+      padding: 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #fbfcfe;
+    }
+
+    .notice[hidden],
+    #downloadArea[hidden],
+    #fallbackArea[hidden] {
+      display: none;
+    }
+
+    .notice h2 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      line-height: 1.3;
+    }
+
+    .notice ul,
+    .fallback-list {
+      margin: 8px 0 0;
+      padding-left: 20px;
+    }
+
+    .notice li,
+    .fallback-list li {
+      margin: 4px 0;
+    }
+
+    .notice.warning {
+      border-color: #f1d7a4;
+      background: #fff8e8;
+      color: #5f4300;
+    }
+
+    .notice.error {
+      border-color: #f0b5b5;
+      background: #fff2f2;
+      color: #822727;
+    }
+
+    .notice.success {
+      border-color: #b7ddc6;
+      background: #f0fbf4;
+      color: #115d2d;
+    }
+
+    .progress-table {
+      width: 100%;
+      margin-top: 14px;
+      border-collapse: collapse;
+      table-layout: fixed;
+      border: 1px solid var(--soft-border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .progress-table th,
+    .progress-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--soft-border);
+      vertical-align: top;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    .progress-table th {
+      background: #f2f4f7;
+      color: #3b424d;
+      font-weight: 700;
+    }
+
+    .progress-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .progress-table td:nth-child(1),
+    .progress-table th:nth-child(1) {
+      width: 118px;
+    }
+
+    .progress-table td:nth-child(2),
+    .progress-table th:nth-child(2) {
+      width: 30%;
+    }
+
+    .status-pill {
+      display: inline-block;
+      min-width: 82px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .status-pending {
+      color: #4d5562;
+      background: #edf0f4;
+    }
+
+    .status-running {
+      color: var(--yellow);
+      background: #fff0c7;
+    }
+
+    .status-success {
+      color: var(--green);
+      background: #dbf6e5;
+    }
+
+    .status-error {
+      color: var(--red);
+      background: #ffe1e1;
+    }
+
+    .url-cell,
+    .message-cell {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 720px) {
+      .page {
+        width: min(100% - 20px, 960px);
+        padding: 16px 0;
+      }
+
+      .app {
+        padding: 20px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .segmented {
+        display: grid;
+        width: 100%;
+      }
+
+      .segmented span {
+        min-width: 0;
+      }
+
+      .progress-table,
+      .progress-table thead,
+      .progress-table tbody,
+      .progress-table tr,
+      .progress-table th,
+      .progress-table td {
+        display: block;
+        width: 100%;
+      }
+
+      .progress-table thead {
+        display: none;
+      }
+
+      .progress-table tr {
+        padding: 10px 0;
+        border-bottom: 1px solid var(--soft-border);
+      }
+
+      .progress-table tr:last-child {
+        border-bottom: 0;
+      }
+
+      .progress-table td {
+        border: 0;
+        padding: 4px 12px;
+      }
+
+      .progress-table td::before {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .progress-table td:nth-child(1)::before {
+        content: "Status";
+      }
+
+      .progress-table td:nth-child(2)::before {
+        content: "Name";
+      }
+
+      .progress-table td:nth-child(3)::before {
+        content: "Message";
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="app" aria-labelledby="appTitle">
+      <header>
+        <h1 id="appTitle">Bulk Website to PDF Converter</h1>
+        <p class="caption" id="timezoneCaption">Local timezone will be used for generated file names.</p>
+      </header>
+
+
+      <form id="pdfForm" novalidate>
+        <div class="section">
+          <span class="label" id="formatLabel">Select Input Format</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="formatLabel">
+            <label>
+              <input type="radio" name="inputMode" value="markdown" checked>
+              <span>Markdown</span>
+            </label>
+            <label>
+              <input type="radio" name="inputMode" value="plain">
+              <span>Plain Text</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="section">
+          <label class="label" for="linkInput">Paste your links below:</label>
+          <textarea id="linkInput" spellcheck="false"></textarea>
+        </div>
+
+        <div class="actions">
+          <button class="primary" id="generateButton" type="submit">Generate PDF Archive</button>
+          <button class="secondary" id="resetButton" type="button">Reset</button>
+          <span class="status-text" id="summaryText" aria-live="polite"></span>
+        </div>
+      </form>
+
+      <section class="notice warning" id="inputIssues" hidden>
+        <h2>Input lines to review</h2>
+        <ul id="inputIssueList"></ul>
+      </section>
+
+      <section class="notice error" id="errorNotice" hidden>
+        <h2>Processing stopped</h2>
+        <p id="errorText"></p>
+      </section>
+
+      <section class="section" id="progressSection" aria-live="polite" hidden>
+        <table class="progress-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Name</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody id="progressBody"></tbody>
+        </table>
+      </section>
+
+      <section class="notice success" id="downloadArea" hidden>
+        <h2>Archive ready</h2>
+        <p id="downloadSummary"></p>
+        <a class="download-link" id="downloadLink" href="#" download>Download ZIP with all PDFs</a>
+      </section>
+
+      <section class="notice warning" id="fallbackArea" hidden>
+        <h2>Direct PDF links</h2>
+        <p>The ZIP could not be created in this browser. Use these Microlink links to download PDFs individually.</p>
+        <ul class="fallback-list" id="fallbackList"></ul>
+      </section>
+
+      <p class="footer-note">
+        Pages that require sign-in, block automated rendering, or exceed ~50 requests per day may fail. Failed entries are saved as text files in the ZIP.
+      </p>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script id="app-script">
+    (function () {
+      "use strict";
+
+      const MICROLINK_ENDPOINT = "https://api.microlink.io/";
+      const FALLBACK_NAME = "Unknown Name";
+      const DEFAULT_DOCUMENT_NAME = "Website";
+      const MAX_FREE_REQUESTS = 50;
+
+      const examples = {
+        markdown: [
+          "1. [BT Taxe si comisioane](https://www.bancatransilvania.ro/brosura-comisioane)",
+          "2. [BT PDF Comisioane persoane fizice](https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf)",
+          "3. [BT Abonamente cont curent](https://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent)",
+        ].join("\n"),
+        plain: [
+          "https://www.bancatransilvania.ro/brosura-comisioane, BT Taxe si comisioane",
+          "https://www.bancatransilvania.ro/files/app/media/Taxe-si-comisioane/Persoane-fizice.pdf, BT PDF Comisioane persoane fizice",
+          "https://www.bancatransilvania.ro/conturi-si-operatiuni/conturi/abonament-cont-curent, BT Abonamente cont curent",
+        ].join("\n"),
+      };
+
+      const state = {
+        objectUrl: null,
+        processing: false,
+      };
+
+      function pad(value) {
+        return String(value).padStart(2, "0");
+      }
+
+      function getLocalTimestamp(date = new Date()) {
+        return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}.${pad(date.getMinutes())}`;
+      }
+
+      function getArchiveTimestamp(date = new Date()) {
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}`;
+      }
+
+      function normalizeUrl(candidate) {
+        const trimmed = String(candidate || "").trim();
+        if (!trimmed) {
+          throw new Error("Enter a valid URL.");
+        }
+        if (/\s/.test(trimmed)) {
+          throw new Error("Enter a valid URL without spaces.");
+        }
+
+        const withScheme = /^[a-z][a-z\d+\-.]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+        let parsed;
+        try {
+          parsed = new URL(withScheme);
+        } catch (error) {
+          throw new Error("Enter a valid URL.");
+        }
+
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+          throw new Error("Only HTTP and HTTPS URLs are supported.");
+        }
+
+        if (!parsed.hostname || (!parsed.hostname.includes(".") && parsed.hostname !== "localhost")) {
+          throw new Error("Enter a valid public URL.");
+        }
+
+        return parsed.href;
+      }
+
+      function parseInput(mode, rawText) {
+        const items = [];
+        const invalid = [];
+        const lines = String(rawText || "").split(/\r?\n/);
+        const markdownPattern = /\[([^\]]*)\]\(([^)]+)\)/;
+
+        lines.forEach((line, index) => {
+          const sourceLine = index + 1;
+          const trimmed = line.trim();
+
+          if (!trimmed) {
+            invalid.push({
+              sourceLine,
+              raw: line,
+              message: "Skipped blank line.",
+            });
+            return;
+          }
+
+          let urlCandidate = "";
+          let nameCandidate = FALLBACK_NAME;
+
+          if (mode === "markdown") {
+            const match = trimmed.match(markdownPattern);
+            if (match) {
+              nameCandidate = match[1].trim() || FALLBACK_NAME;
+              urlCandidate = match[2].trim();
+            } else {
+              urlCandidate = trimmed;
+            }
+          } else {
+            const commaIndex = trimmed.indexOf(",");
+            if (commaIndex >= 0) {
+              urlCandidate = trimmed.slice(0, commaIndex).trim();
+              nameCandidate = trimmed.slice(commaIndex + 1).trim() || FALLBACK_NAME;
+            } else {
+              urlCandidate = trimmed;
+            }
+          }
+
+          try {
+            items.push({
+              sourceLine,
+              url: normalizeUrl(urlCandidate),
+              name: nameCandidate,
+            });
+          } catch (error) {
+            invalid.push({
+              sourceLine,
+              raw: line,
+              message: error.message,
+            });
+          }
+        });
+
+        return { items, invalid };
+      }
+
+      function sanitizeFileName(name) {
+        const cleaned = String(name || "")
+          .replace(/[\\/*?:"<>|]/g, "")
+          .replace(/[\u0000-\u001f\u007f]/g, "")
+          .trim();
+        return cleaned || DEFAULT_DOCUMENT_NAME;
+      }
+
+      function buildPdfFileName(index, timestamp, name, seenNames = new Set()) {
+        const cleanName = sanitizeFileName(name);
+        let displayName = cleanName;
+        let duplicateIndex = 1;
+
+        while (seenNames.has(displayName.toLowerCase())) {
+          duplicateIndex += 1;
+          displayName = `${cleanName} (${duplicateIndex})`;
+        }
+
+        seenNames.add(displayName.toLowerCase());
+        return `${index} ${timestamp} - ${displayName}.pdf`;
+      }
+
+      function buildMicrolinkUrl(sourceUrl) {
+        const apiUrl = new URL(MICROLINK_ENDPOINT);
+        apiUrl.searchParams.set("url", sourceUrl);
+        apiUrl.searchParams.append("pdf", "");
+        apiUrl.searchParams.set("embed", "pdf.url");
+        apiUrl.searchParams.set("meta", "false");
+        return apiUrl;
+      }
+
+      function byId(id) {
+        return document.querySelector(`#${id}`);
+      }
+
+      function setNotice(element, visible) {
+        if (element) {
+          element.hidden = !visible;
+        }
+      }
+
+      function clearElement(element) {
+        if (element) {
+          element.replaceChildren();
+        }
+      }
+
+      function setSummary(message) {
+        const summaryText = byId("summaryText");
+        if (summaryText) {
+          summaryText.textContent = message;
+        }
+      }
+
+      function clearDownloadUrl() {
+        if (state.objectUrl) {
+          URL.revokeObjectURL(state.objectUrl);
+          state.objectUrl = null;
+        }
+      }
+
+      function resetOutput() {
+        clearDownloadUrl();
+        setNotice(byId("inputIssues"), false);
+        setNotice(byId("errorNotice"), false);
+        setNotice(byId("progressSection"), false);
+        setNotice(byId("downloadArea"), false);
+        setNotice(byId("fallbackArea"), false);
+        clearElement(byId("inputIssueList"));
+        clearElement(byId("progressBody"));
+        clearElement(byId("fallbackList"));
+        const errorText = byId("errorText");
+        if (errorText) {
+          errorText.textContent = "";
+        }
+        setSummary("");
+      }
+
+      function renderInputIssues(invalid, itemCount) {
+        const inputIssues = byId("inputIssues");
+        const issueList = byId("inputIssueList");
+        clearElement(issueList);
+
+        if (!invalid.length && itemCount <= MAX_FREE_REQUESTS) {
+          setNotice(inputIssues, false);
+          return;
+        }
+
+        invalid.forEach((issue) => {
+          const li = document.createElement("li");
+          li.textContent = `Line ${issue.sourceLine}: ${issue.message}`;
+          issueList.appendChild(li);
+        });
+
+        if (itemCount > MAX_FREE_REQUESTS) {
+          const li = document.createElement("li");
+          li.textContent = `${itemCount} valid URLs found. Microlink's free endpoint has a soft limit of ${MAX_FREE_REQUESTS} requests per day.`;
+          issueList.appendChild(li);
+        }
+
+        setNotice(inputIssues, true);
+      }
+
+      function createProgressRow(item) {
+        const row = document.createElement("tr");
+        row.innerHTML = [
+          '<td><span class="status-pill status-pending">Pending</span></td>',
+          `<td class="url-cell"></td>`,
+          `<td class="message-cell"></td>`,
+        ].join("");
+
+        row.children[1].textContent = item.name;
+        row.children[2].textContent = item.url;
+        byId("progressBody").appendChild(row);
+        return row;
+      }
+
+      function updateProgressRow(row, status, message) {
+        const pill = row.querySelector(".status-pill");
+        pill.className = `status-pill status-${status}`;
+        pill.textContent = status === "running"
+          ? "Running"
+          : status === "success"
+            ? "Done"
+            : status === "error"
+              ? "Failed"
+              : "Pending";
+        row.children[2].textContent = message;
+      }
+
+      function renderFallbackLinks(links) {
+        const fallbackArea = byId("fallbackArea");
+        const fallbackList = byId("fallbackList");
+        clearElement(fallbackList);
+
+        links.forEach((link) => {
+          const li = document.createElement("li");
+          const anchor = document.createElement("a");
+          anchor.href = link.url;
+          anchor.download = link.fileName;
+          anchor.target = "_blank";
+          anchor.rel = "noopener";
+          anchor.textContent = link.fileName;
+          li.appendChild(anchor);
+          fallbackList.appendChild(li);
+        });
+
+        setNotice(fallbackArea, links.length > 0);
+      }
+
+      function makeErrorText(item, error) {
+        return [
+          `Failed to process ${item.url}`,
+          `Source line: ${item.sourceLine}`,
+          `Name: ${item.name}`,
+          `Error: ${error.message}`,
+        ].join("\n");
+      }
+
+      function isPdfBuffer(buffer) {
+        const bytes = new Uint8Array(buffer.slice(0, 4));
+        return bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
+      }
+
+      async function fetchPdf(item, directUrl) {
+        const response = await fetch(directUrl);
+        if (response.status === 429) {
+          const error = new Error("Microlink free quota was reached. Wait for the quota reset before starting more PDFs.");
+          error.status = 429;
+          throw error;
+        }
+        if (!response.ok) {
+          throw new Error(`Microlink returned HTTP ${response.status}.`);
+        }
+
+        const buffer = await response.arrayBuffer();
+        if (!isPdfBuffer(buffer)) {
+          throw new Error("Microlink did not return a valid PDF file.");
+        }
+        return buffer;
+      }
+
+      async function processItems(items) {
+        if (!window.JSZip) {
+          throw new Error("JSZip could not be loaded. Check your network connection and reload the page.");
+        }
+
+        const timestamp = getLocalTimestamp();
+        const zip = new window.JSZip();
+        const seenNames = new Set();
+        const fallbackLinks = [];
+        const rows = items.map(createProgressRow);
+        let successCount = 0;
+        let failCount = 0;
+        let stoppedForQuota = false;
+
+        setNotice(byId("progressSection"), true);
+
+        for (let index = 0; index < items.length; index += 1) {
+          const item = items[index];
+          const row = rows[index];
+          const fileName = buildPdfFileName(index + 1, timestamp, item.name, seenNames);
+          const directUrl = buildMicrolinkUrl(item.url).toString();
+
+          fallbackLinks.push({ fileName, url: directUrl });
+          updateProgressRow(row, "running", "Requesting PDF from Microlink...");
+          setSummary(`Processing ${index + 1} of ${items.length}...`);
+
+          try {
+            const pdfBuffer = await fetchPdf(item, directUrl);
+            zip.file(fileName, pdfBuffer);
+            successCount += 1;
+            updateProgressRow(row, "success", `Added ${fileName}`);
+          } catch (error) {
+            failCount += 1;
+            zip.file(fileName.replace(/\.pdf$/i, "_ERROR.txt"), makeErrorText(item, error));
+            updateProgressRow(row, "error", error.message);
+
+            if (error.status === 429) {
+              stoppedForQuota = true;
+              const remaining = items.slice(index + 1);
+              zip.file(
+                "MICROLINK_QUOTA_STOPPED.txt",
+                [
+                  "Microlink returned HTTP 429, so no more requests were started.",
+                  "",
+                  "Remaining URLs:",
+                  ...remaining.map((remainingItem) => `Line ${remainingItem.sourceLine}: ${remainingItem.url}`),
+                ].join("\n"),
+              );
+              break;
+            }
+          }
+        }
+
+        return {
+          zip,
+          fallbackLinks,
+          successCount,
+          failCount,
+          stoppedForQuota,
+        };
+      }
+
+      function showError(message) {
+        const errorNotice = byId("errorNotice");
+        const errorText = byId("errorText");
+        errorText.textContent = message;
+        setNotice(errorNotice, true);
+      }
+
+      async function handleSubmit(event) {
+        event.preventDefault();
+        if (state.processing) {
+          return;
+        }
+
+        resetOutput();
+
+        const mode = document.querySelector('input[name="inputMode"]:checked').value;
+        const rawText = byId("linkInput").value;
+        const parsed = parseInput(mode, rawText);
+
+        renderInputIssues(parsed.invalid, parsed.items.length);
+
+        if (!parsed.items.length) {
+          showError("No valid links found. Add at least one public HTTP or HTTPS URL.");
+          return;
+        }
+
+        const generateButton = byId("generateButton");
+        state.processing = true;
+        generateButton.disabled = true;
+        generateButton.textContent = "Generating...";
+
+        try {
+          const result = await processItems(parsed.items);
+          setSummary("Creating ZIP archive...");
+
+          try {
+            const archiveBlob = await result.zip.generateAsync({ type: "blob" });
+            const archiveName = `PDF_Export_${getArchiveTimestamp()}.zip`;
+            clearDownloadUrl();
+            state.objectUrl = URL.createObjectURL(archiveBlob);
+
+            const downloadLink = byId("downloadLink");
+            downloadLink.href = state.objectUrl;
+            downloadLink.download = archiveName;
+            byId("downloadSummary").textContent = `${result.successCount} PDF file(s) and ${result.failCount} error file(s) are ready.`;
+            setNotice(byId("downloadArea"), true);
+
+            if (result.stoppedForQuota) {
+              showError("Microlink returned HTTP 429. The ZIP includes processed files and a quota note for remaining URLs.");
+            }
+
+            setSummary("Archive ready.");
+          } catch (zipError) {
+            showError(`The PDFs were processed, but the ZIP could not be created: ${zipError.message}`);
+            renderFallbackLinks(result.fallbackLinks);
+            setSummary("Use the direct links below.");
+          }
+        } catch (error) {
+          showError(error.message);
+          renderFallbackLinks(parsed.items.map((item, index) => ({
+            fileName: buildPdfFileName(index + 1, getLocalTimestamp(), item.name, new Set()),
+            url: buildMicrolinkUrl(item.url).toString(),
+          })));
+          setSummary("Processing failed.");
+        } finally {
+          state.processing = false;
+          generateButton.disabled = false;
+          generateButton.textContent = "Generate PDF Archive";
+        }
+      }
+
+      function setExample(mode) {
+        const textarea = byId("linkInput");
+        textarea.value = examples[mode] || examples.markdown;
+      }
+
+      function init() {
+        const timezoneCaption = byId("timezoneCaption");
+        let timezone = "local time";
+        try {
+          timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || timezone;
+        } catch (error) {
+          timezone = "local time";
+        }
+        timezoneCaption.textContent = `Auto-detected local timezone for file timestamps: ${timezone}`;
+
+        setExample("markdown");
+
+        document.querySelectorAll('input[name="inputMode"]').forEach((input) => {
+          input.addEventListener("change", () => {
+            setExample(input.value);
+            resetOutput();
+          });
+        });
+
+        byId("pdfForm").addEventListener("submit", handleSubmit);
+        byId("resetButton").addEventListener("click", () => {
+          const mode = document.querySelector('input[name="inputMode"]:checked').value;
+          setExample(mode);
+          resetOutput();
+        });
+      }
+
+      window.PdfDownloader = {
+        buildMicrolinkUrl,
+        buildPdfFileName,
+        getArchiveTimestamp,
+        getLocalTimestamp,
+        normalizeUrl,
+        parseInput,
+        sanitizeFileName,
+      };
+
+      document.addEventListener("DOMContentLoaded", init);
+    }());
+  </script>
+</body>
+</html>
